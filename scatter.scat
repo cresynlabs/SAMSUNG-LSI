@@ -1,0 +1,67 @@
+#! armcc -E --cpu=Cortex-M0plus
+;; Preprocess this scatter file using armcc's preprocessor and #define's from stack.h
+#include "Drivers/System/stack.h"
+
+;;  Copyright ARM Ltd 2005. All rights reserved.
+
+;;  Vector table starts at 0
+;;    Initial SP == |Image$$ARM_LIB_STACK$$ZI$$Limit| (for two region model)
+;;               or |Image$$ARM_LIB_STACKHEAP$$ZI$$Limit| (for one region model)
+;;    Initial PC == &__main (with LSB set to indicate Thumb)
+;;    These two values are provided by the library
+;;    Other vectors must be provided by the user
+;;  Code starts after the last possible vector
+;;  Data starts at 0x20000000
+;;    Heap  is positioned at ARM_LIB_HEAB
+;;    Stack is positioned at ARM_LIB_STACK
+;;  Note that the regions here only reserve the space in the memory map. The
+;;  values are given in stack.h so that they can be passed to the library to
+;;  actually set the initial values.
+
+;; Compatible with ISSM model
+
+FLASH_LOAD 0x0000 0x0000BBFF
+{
+  BOOT_VECTORS BOOT_VECTORS_BASE VECTORS_SIZE
+  {
+    boot_cm0pikmcu.o (boot_vectors, +FIRST)
+  }
+
+  BOOT_CONFIG_CODE BOOT_CONFIG_BASE FIXED
+  {
+    boot_cm0pikmcu.o (region_boot_config_func)
+  }
+
+  BOOT_CODE BOOT_CODE_BASE FIXED
+  {
+    *.o (region_main_func)
+    *(InRoot$$Sections)      ; when using __main, place Root$$Sections after Reset
+;;    StartUp.o (region_startup_func, +FIRST)
+    * (+RO)
+  }
+
+;;CODE STARTUP_CODE_BASE FIXED
+;;  {
+;;    *(InRoot$$Sections)      ; when using __main, place Root$$Sections after Reset
+;;    StartUp.o (region_startup_func, +FIRST)
+;;    * (+RO)
+;;  }
+
+  DATA DATA_AREA_BASE DATA_AREA_SIZE
+  {
+    * (+RW, +ZI)
+  }
+
+  ;; Heap starts at 1MB in RAM and grows upwards
+  ARM_LIB_HEAP HEAP_BASE EMPTY HEAP_SIZE
+  {
+  }
+
+  ;; Stack starts at the end of the 2MB of RAM
+  ;; And grows downwards for 32KB
+  ARM_LIB_STACK STACK_BASE EMPTY -STACK_SIZE
+  {
+  }
+
+}
+

@@ -1,0 +1,6 @@
+[gerrit]
+host=12.36.115.145
+port=29418
+project=DL7-PDDT-MCU/S2MUA01
+defaultbranch=master
+defaultremote=origin

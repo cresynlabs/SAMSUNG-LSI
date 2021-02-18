@@ -1,0 +1,167 @@
+# =================================================================
+# define
+DONE=@if [ -f $(1) ]; then echo Build completed.; fi
+RM=rm -f $(1)
+RDIR=find ./../../../Drivers -name "*.c" -type f
+EXPDIR=find . -name $(1) -type f
+SEARCH_FLIST=find ./../../../Drivers -name $(1) -type f
+CURDIR=pwd
+MKDIR=mkdir -p Output/Bin; cd Output; mkdir Map; mkdir Obj; mkdir Log;
+ECHO_NULL=======================================
+# =================================================================
+
+# =================================================================
+# Toolchain
+GCC_ROOT_PATH = /usr/local/GNU_ARM_Embedded_Toolchain/gcc-arm-none-eabi-6-2017-q2-update
+GCC_TOOL_PATH = $(GCC_ROOT_PATH)/bin
+GCC_ARM  := arm-none-eabi-
+
+ARMCC_ROOT_PATH = /usr/local/ARM_Compiler_5
+ARMCC_TOOL_PATH = $(ARMCC_ROOT_PATH)/bin
+# =================================================================
+
+# =================================================================
+# CPU Type
+CPU_TYPE=Cortex-M0plus
+# =================================================================
+
+# =================================================================
+# Complier Tool Setting
+CC          = $(ARMCC_TOOL_PATH)/armcc
+LD          = $(ARMCC_TOOL_PATH)/armlink
+FE          = $(ARMCC_TOOL_PATH)/fromelf
+CFLAGS=-g -O2 --cpu=$(CPU_TYPE) --library_type=microlib --diag_error=warning
+WPC_LIB_DIR = ./../../../Drivers/WPC
+WPC_LIB_NAME = libWPT.a
+# =================================================================
+
+# =================================================================
+# Target
+TIME_BIN=chmod a+x ./../../../BuildTime_linux.pl;perl ./../../../BuildTime_linux.pl;
+OUTPUT = mfc_fw_flash
+TARGET = $(BIN_PATH)/$(OUTPUT).bin
+CONV_BIN=chmod a+x ./../../../BIN_TO_FLASH_linux.pl;perl ./../../../BIN_TO_FLASH_linux.pl $(TARGET);
+SCATTER=./../../../scatter.scat
+# =================================================================
+
+# =================================================================
+# Get source File List
+READ_FILE_BUF1 = $(shell $(call RDIR))
+READ_FILE_BUF1 += $(shell $(call EXPDIR, "*.c"))
+READ_FILE_BUF2 = $(subst $(shell $(call CURDIR)),., $(READ_FILE_BUF1))
+READ_FILE_BUF3 = $(subst \,/, $(READ_FILE_BUF2))
+READ_FILE_LIST = $(READ_FILE_BUF3)
+# =================================================================
+
+# =================================================================
+# Get Header List
+HEADER_BUF1 = $(shell $(call SEARCH_FLIST, "*.h"))
+HEADER_BUF1 += $(shell $(call EXPDIR, "*.h"))
+HEADER_BUF2 = $(subst $(shell $(call CURDIR)),., $(HEADER_BUF1))
+HEADER_BUF3 = $(subst \,/, $(HEADER_BUF2))
+HEADER_BUF4 = $(filter-out ./Output/Bin/S2MUA01_FLASH.h, $(HEADER_BUF3))
+HEADER_LIST = $(HEADER_BUF4)
+# =================================================================
+
+# =================================================================
+# Path setting
+MAKE_DIR = $(PWD)
+OUT_PATH := $(MAKE_DIR)/Output
+OBJ_PATH := $(OUT_PATH)/Obj
+BIN_PATH := $(OUT_PATH)/Bin
+MAP_PATH := $(OUT_PATH)/Map
+OBJ_DUMP  = $(GCC_TOOL_PATH)/$(GCC_ARM)objdump
+# =================================================================
+
+# =================================================================
+# Get Object List
+OBJ_BUF1 = $(notdir $(READ_FILE_LIST))
+SRC_OBJS = $(OBJ_BUF1:%.c=%.o)
+SRC_OBJS1 = $(filter-out uart_cmd.o, $(SRC_OBJS))
+COMPILE_OBJS=$(SRC_OBJS1:%=$(OBJ_PATH)/%)
+# =================================================================
+
+# =================================================================
+# Include directory : needs for including header file
+INC_DIR = -I ./../../../Drivers \
+          -I ./../../../Drivers/CMSIS \
+          -I ./../../../Drivers/Drivers \
+          -I ./../../../Drivers/System \
+          -I ./../../../Drivers/MCU \
+          -I ./../../../Drivers/WPC \
+		  -I $(PWD)
+# =================================================================
+
+# =================================================================
+# Search Dependency Input list
+vpath %.c $(INC_DIR)
+# =================================================================
+
+# =================================================================
+# make
+all: $(TARGET)
+	$(call DONE, $(TARGET))
+
+rebuild: clean all
+
+clean:
+	$(call RM,$(BIN_PATH)/*.debug)
+	$(call RM,$(OBJ_PATH)/*.o)
+	$(call RM,$(BIN_PATH)/*.elf)
+	$(call RM,$(BIN_PATH)/*.bin)
+	$(call RM,$(BIN_PATH)/*.hex)
+	$(call RM,$(BIN_PATH)/*.axf)
+	$(call RM,$(BIN_PATH)/*.inc)
+	$(call RM,$(BIN_PATH)/*.rcf)
+	$(call RM,$(MAP_PATH)/*.map)
+	$(call RM,build.sh)
+	$(call RM,*.log)
+	$(call RM,$(TARGET))
+
+# For Script Debug print
+ScriptTest :
+	@echo  Script Test
+	@echo  $(ECHO_NULL)
+	@echo  SRC_OBJS1 : $(SRC_OBJS1)
+	@echo  $(ECHO_NULL)
+	@echo  CURDIR  : $(CURDIR)
+	@echo  $(ECHO_NULL)
+	@echo  READ_FILE_LIST : $(READ_FILE_LIST)
+	@echo  $(ECHO_NULL)
+	@echo  HEADER_LIST : $(HEADER_LIST)
+	@echo  $(ECHO_NULL)
+	@echo  COMPILE_OBJS : $(COMPILE_OBJS)
+	@echo  $(ECHO_NULL)
+
+dir :
+	$(call MKDIR)
+# =================================================================
+
+# =================================================================
+# $@ : Target File names
+# @< : Input File variable first value
+# $^, $+ : Input File all variable value
+
+# Compile time
+	$(TIME_BIN)
+
+# Compile source file
+$(COMPILE_OBJS) : $(OBJ_PATH)/%.o: %.c $(HEADER_LIST)
+	@echo -----------------------------------------------
+	@echo compiling from $< to $@ ......
+	$(CC) $(INC_DIR) $(CFLAGS) -c $< -o $@
+
+# Generate Elf/Axf file
+$(BIN_PATH)/$(OUTPUT).elf: $(COMPILE_OBJS)
+	$(LD) "./../../../Drivers/CMSIS/arm_cortexM0PLUS_plc.lib" --map --scatter $(SCATTER) --pad 0x00 --userlibpath=$(WPC_LIB_DIR) $(WPC_LIB_NAME) --library_type=microlib $(COMPILE_OBJS) -o $@ --info totals
+	$(OBJ_DUMP) -DSe  $(BIN_PATH)/$(OUTPUT).elf >> $(BIN_PATH)/$(OUTPUT).debug
+	$(LD) "./../../../Drivers/CMSIS/arm_cortexM0PLUS_plc.lib" --map --scatter $(SCATTER) --pad 0x00 --userlibpath=$(WPC_LIB_DIR) $(WPC_LIB_NAME) --library_type=microlib $(COMPILE_OBJS) -o $(BIN_PATH)/$(OUTPUT).axf --info totals
+
+# Generate Binary File
+$(BIN_PATH)/$(OUTPUT).bin: $(BIN_PATH)/$(OUTPUT).elf $(BIN_PATH)/$(OUTPUT).axf
+	$(FE) --bin -o $@ $<
+	$(FE) --i32 -o $(BIN_PATH)/$(OUTPUT)_i32.hex $(BIN_PATH)/$(OUTPUT).elf
+	$(FE) --vhx --32x1 -o $(BIN_PATH)/$(OUTPUT).hex $(BIN_PATH)/$(OUTPUT).axf
+	$(FE) --text -v -acdstz -o $(MAP_PATH)/$(OUTPUT).map $(BIN_PATH)/$(OUTPUT).axf
+	$(CONV_BIN)
+# =================================================================
